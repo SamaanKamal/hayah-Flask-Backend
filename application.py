@@ -243,9 +243,9 @@ def updateDoctor():
          # Check if the phone number is in the dictionary
         if phone in sms_codes:
             # Check if the code matches the one in the dictionary
-            if sms_codes[oldPhones[j]] == code:
+            if sms_codes[oldPhones] == code:
                 # Remove the code from the dictionary
-                del sms_codes[oldPhones[j]]
+                del sms_codes[oldPhones]
 
 
                 cursor.execute("""UPDATE `doctors` SET `doctor_address` = '{}', `Doctor_PhoneNumber`  ={} , `doctor_password`  ='{}' WHERE `DoctorsCode` ={} """.format(full_address,phone,password,Doctor_Code))
