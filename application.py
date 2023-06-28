@@ -10,10 +10,10 @@ import datetime
 import base64
 
 
-application = Flask(__name__)
+app = Flask(__name__)
 conn = sql.Connect(host="127.0.0.1", user="root", password="samaan11", database="hayah0")
 cursor = conn.cursor()
-application.secret_key = os.urandom(24)
+app.secret_key = os.urandom(24)
 
 array1={}
 array2={}
@@ -27,7 +27,7 @@ client = Client(account_sid, auth_token)
 # Store the SMS codes in a dictionary
 sms_codes = {}
 oldPhones = None
-@application.route('/')
+@app.route('/')
 def index():
     return 'Hello from here'
 
@@ -37,7 +37,7 @@ client = vonage.Client(key="e32ed317", secret="La8rDbRF5WYKAUPX")
 sms = vonage.Sms(client)
 
 
-@application.route('/send-sms', methods=['POST'])
+@app.route('/send-sms', methods=['POST'])
 def send_sms():
     # Get the recipient's phone number and the message content from the request
     phone_number = request.json.get('phone_number')
@@ -64,7 +64,7 @@ def send_sms():
 
 
 
-@application.route("/register", methods=['Post'])
+@app.route("/register", methods=['Post'])
 def register():
     global oldPhones
     fname = request.json.get('ufname')
@@ -112,7 +112,7 @@ def register():
             return jsonify({'error': str(e)}),500
     
 
-@application.route('/login_validation', methods = ['POST', 'GET'])
+@app.route('/login_validation', methods = ['POST', 'GET'])
 def login_validation():
     user = request.json.get('User')
     if user == "Donor":
@@ -123,7 +123,7 @@ def login_validation():
         return jsonify({'error': 'Invalid choice , Please Try again'}),403
 
 
-@application.route('/donor_login_validation', methods=['POST', 'GET'])
+@app.route('/donor_login_validation', methods=['POST', 'GET'])
 def donor_login_validation():
     email = request.json.get('email')
     password = request.json.get('password')
@@ -146,7 +146,7 @@ def donor_login_validation():
         return jsonify({'success': False,'message':msg}),406
 
 
-@application.route('/doctor_validation', methods=['POST', 'GET'])
+@app.route('/doctor_validation', methods=['POST', 'GET'])
 def doctor_login_validation():
     email = request.json.get('email')
 
@@ -169,7 +169,7 @@ def doctor_login_validation():
         #print(msg)
         return jsonify({'success': False,'message':msg}),406
 
-@application.route('/generate_code', methods=['POST'])
+@app.route('/generate_code', methods=['POST'])
 def generate_code():
     # Collect the user's phone number from the request
     phone_number = request.json.get('phone')
@@ -193,7 +193,7 @@ def generate_code():
 
 
 
-@application.route('/updateDonorInfo',methods =['POST'])
+@app.route('/updateDonorInfo',methods =['POST'])
 def updateDonor():
     if request.method =="POST"and 'id' in session:
         global oldPhones
@@ -228,7 +228,7 @@ def updateDonor():
         #return""
 
 
-@application.route('/updateDoctorInfo',methods =['POST'])
+@app.route('/updateDoctorInfo',methods =['POST'])
 def updateDoctor():
     if request.method =="POST" and 'id' in session:
         global oldPhones
@@ -261,7 +261,7 @@ def updateDoctor():
     else:
         return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
 
-@application.route("/create_report", methods=['Post'])
+@app.route("/create_report", methods=['Post'])
 def report():
     try:
         #doctor_code = request.form.get('doctor_code')
@@ -373,7 +373,7 @@ def report():
     except Exception as e:
             return jsonify({'error': str(e)}),401
   
-@application.route('/GetReportID', methods = ['GET'])
+@app.route('/GetReportID', methods = ['GET'])
 def getID():
     if 'id' in session:
         id = session['id']
@@ -391,7 +391,7 @@ def getID():
         return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
         
 
-@application.route('/GetReportInfo/<int:ReportID>', methods = ['GET'])
+@app.route('/GetReportInfo/<int:ReportID>', methods = ['GET'])
 def getReport(ReportID):
     if 'id' in session:
         id = session['id']
@@ -431,7 +431,7 @@ def getReport(ReportID):
     else:
         return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
     
-@application.route('/GetDonorAccountInfo', methods = ['GET'])
+@app.route('/GetDonorAccountInfo', methods = ['GET'])
 def getDonorInfo():
     if 'id' in session:
         try:
@@ -456,7 +456,7 @@ def getDonorInfo():
         return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
 
 
-@application.route('/GetDoctorAccountInfo', methods = ['GET'])
+@app.route('/GetDoctorAccountInfo', methods = ['GET'])
 def getDoctorInfo():
     if 'code' in session:
         try:
@@ -481,12 +481,15 @@ def getDoctorInfo():
     else:
         return jsonify({'error': 'Not logged in:Unauthoriezed'}),401    
 
-@application.route('/Discount', methods = ['POST'])
+imageData =None
+@app.route('/CreateDiscount', methods = ['POST'])
 def createDiscount():
     if request.method=='POST':
         if 'id' in session:
-            with open(r'C:\Users\User\Desktop\alpha.jpg','rb') as file:
+            with open(r'D:\fcis\GP\New folder\Task1\static\alpha.jpg','rb') as file:
                 blob_data = file.read()
+            global imageData    
+            imageData=blob_data
             DataDic={}
             id = session['id']
             try:
@@ -499,24 +502,10 @@ def createDiscount():
                         #cursor.execute("""INSERT INTO `discounts` (`percentage`, `LabName`,`DiscountNumber`,`discountImage`) VALUES ({}, '{}', {},'{}')""".format(40,'alpha',5,blob_data))
                         cursor.execute("""INSERT INTO `discounts` (`percentage`, `LabName`, `DiscountNumber`, `discount_image`) VALUES (%s, %s, %s, %s)""", (40, 'alpha', 5, blob_data))
                         conn.commit()  # Commit the insert into discounts
-                        cursor.fetchall()  # Consume any unread result
                         discount_id = cursor.lastrowid  # Get the auto-incremented DiscountID
                         cursor.execute("""INSERT INTO `getting_offer` ( `Discount_ID`,`Donor_IDDD`, `NumOfTimesDonated`) VALUES ({},{}, {})""".format(discount_id,id,NewnumberOfTimesDonated))
-                        conn.commit()  # Commit the insert into discounts
-                        cursor.fetchall()  # Consume any unread result
-                        cursor.execute("""SELECT `Discount_ID` FROM `getting_offer` WHERE `Donor_IDDD` = {} """.format(id))
-                        
-                        DiscountID = cursor.fetchone()
-                        #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = {}""".format(DiscountID))
-                        cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = %s""", (DiscountID[0],))
-                        DiscountData=cursor.fetchone()
-                        conn.commit()
-                        DataDic['DiscountID']=DiscountData[0]
-                        DataDic['percentage']=DiscountData[1]
-                        DataDic['LabName']=DiscountData[2]
-                        DataDic['DiscountNumber']=DiscountData[3]
-                        DataDic['DiscountImage']=base64.b64encode(blob_data).decode('utf-8')  # Convert to Base64 string
-
+                        conn.commit()  # Commit the insert into discounts-
+                        DataDic= {'success':True, 'message':'A new Discount has been created !'}
                         return jsonify(DataDic), 200
                     else:
                         response = {'success': False, 'error': 'This donor does not have any discounts'}
@@ -531,7 +520,111 @@ def createDiscount():
     else:
         return jsonify({'error': 'This method is not allowed'}),405
 
-    
+@app.route('/getDiscountImage', methods = ['GET'])
+def image():
+    if request.method=='GET':
+        if 'id' in session:
+            id = session['id']
+            DataDic={}
+            global imageData
+            try:
+                cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` = {}""".format(id))
+                numberOfTimesDonated= cursor.fetchone()
+                if numberOfTimesDonated:
+                    if(numberOfTimesDonated[0]>5):
+                        # cursor.execute("""SELECT `Discount_ID` FROM `getting_offer` WHERE `Donor_IDDD` = {} """.format(id))                
+                        # DiscountID = cursor.fetchone()
+                        # #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = {}""".format(DiscountID))
+                        # cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = %s""", (DiscountID[0],))
+                        # DiscountData=cursor.fetchone()
+                        print(imageData)
+                        DataDic['DiscountImage']=base64.b64encode(imageData).decode('utf-8')  # Convert to Base64 string
+                        return jsonify(DataDic), 200
+                    else:
+                        response = {'success': False, 'error': 'This donor does not have any discounts'}
+                        return jsonify(response),404
+                else:
+                    return jsonify({'error': 'This donor does not have any discounts'}), 404
+            except Exception as e:
+                return jsonify({'error': str(e)}),500
+        else:
+            return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
+    else:
+        return jsonify({'error': 'This method is not allowed'}),405        
+
+@app.route('/getDiscountData/<int:DiscountID>', methods = ['GET'])
+def GetDiscount(DiscountID):
+    if request.method=='GET':
+        if 'id' in session:
+            id = session['id']
+            DataDic={}
+            try:
+                cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` = {}""".format(id))
+                numberOfTimesDonated= cursor.fetchone()
+                if numberOfTimesDonated:
+                    if(numberOfTimesDonated[0]>5):
+                        # cursor.execute("""SELECT `Discount_ID` FROM `getting_offer` WHERE `Donor_IDDD` = {} """.format(id))                
+                        # DiscountID = cursor.fetchone()
+                        #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = {}""".format(DiscountID))
+                        cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = %s""", (DiscountID,))
+                        DiscountData=cursor.fetchone()
+                        DataDic['DiscountID']=DiscountData[0]
+                        DataDic['percentage']=DiscountData[1]
+                        DataDic['LabName']=DiscountData[2]
+                        DataDic['DiscountNumber']=DiscountData[3]
+                        return jsonify(DataDic), 200
+                    else:
+                        response = {'success': False, 'error': 'This donor does not have any discounts'}
+                        return jsonify(response),404
+                else:
+                    return jsonify({'error': 'This donor does not have any discounts'}), 404
+            except Exception as e:
+                return jsonify({'error': str(e)}),500
+        else:
+            return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
+    else:
+        return jsonify({'error': 'This method is not allowed'}),405        
+
+@app.route('/getDiscountNotificationID', methods = ['GET'])
+def GetDiscountNotification():
+    if request.method=='GET':
+        if 'id' in session:
+            id = session['id']
+            try:
+                cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` = {}""".format(id))
+                numberOfTimesDonated= cursor.fetchone()
+                if numberOfTimesDonated:
+                    if(numberOfTimesDonated[0]>5):
+                        cursor.execute("""SELECT `Discount_ID` FROM `getting_offer` WHERE `Donor_IDDD` = {} ORDER BY `Discount_ID` DESC """.format(id))                
+                        DiscountsID = cursor.fetchall()
+                        #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = {}""".format(DiscountID))
+                        #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = %s""", (DiscountID[0],))
+                        #DiscountData=cursor.fetchone()
+                        # DataDic['DiscountID']=DiscountData[0]
+                        # DataDic['percentage']=DiscountData[1]
+                        # DataDic['LabName']=DiscountData[2]
+                        # DataDic['DiscountNumber']=DiscountData[3]
+                        if DiscountsID:
+                            DiscountsIDList= [item for t in DiscountsID for item in t]
+                            return jsonify(DiscountsIDList), 200
+                        else:
+                            return jsonify({'error': 'Discount ID not found'}), 404
+                        
+                    else:
+                        response = {'success': False, 'error': 'This donor does not have any discounts'}
+                        return jsonify(response),404
+                else:
+                    return jsonify({'error': 'This donor does not have any discounts'}), 404
+            except Exception as e:
+                return jsonify({'error': str(e)}),500
+        else:
+            return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
+    else:
+        return jsonify({'error': 'This method is not allowed'}),405        
+
+
+
+
 if __name__ == "__main__":
 
-    application.run(debug=True)
+    app.run(debug=True)
