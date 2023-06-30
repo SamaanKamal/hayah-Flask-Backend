@@ -41,14 +41,13 @@ sms = vonage.Sms(client)
 def send_sms():
     # Get the recipient's phone number and the message content from the request
     phone_number = request.json.get('phone_number')
-    print(phone_number)
-    #message = request.form.get('message')
     fullPhoneNumber = '+2'+ str(phone_number)
     if not fullPhoneNumber:
         return jsonify({'message': 'Phone number is required'}), 400
 
     code = str(random.randint(1000, 9999))
-    print(fullPhoneNumber)
+    # Store the code in the dictionary
+    sms_codes[phone_number] = code
     # Send the SMS using the Nexmo client
     response = sms.send_message({
         'from': 'hayah',  # Replace with your Nexmo virtual number or alphanumeric sender ID
@@ -66,7 +65,6 @@ def send_sms():
 
 @app.route("/register", methods=['Post'])
 def register():
-    global oldPhones
     fname = request.json.get('ufname')
     lname = request.json.get('ulname')
     email = request.json.get('uemail')
@@ -76,8 +74,6 @@ def register():
     blood_type = request.json.get('blood_types')
     street = request.json.get('uAddress')
     age = request.json.get('uage')
-    oldPhones = phone
-    print(oldPhones)
     encrypted_password = sha256_crypt.encrypt(password)
 
     cursor.execute('SELECT * FROM donors WHERE Email = %s', (email,))
@@ -102,11 +98,16 @@ def register():
 
             cursor.execute("""SELECT * FROM `Donors` WHERE `Email` LIKE '{}'""".format(email))
             account = cursor.fetchone()
-            session['id'] = account[0]
-            session['email'] = account[3]
-            conn.commit()
-            response = {'success': True, 'message': 'Registerd successfully.'}
-            return jsonify(response),200
+            if account:
+
+                session['id'] = account[0]
+                session['email'] = account[3]
+                conn.commit()
+                response = {'success': True, 'message': 'Registerd successfully.'}
+                return jsonify(response),200
+            else:
+                msg = 'This User doesnt have any accounts'
+                return jsonify({'success': False,'message':msg}),406
         return jsonify({'error': msg}), 400
     except Exception as e:
             return jsonify({'error': str(e)}),500
@@ -131,19 +132,22 @@ def donor_login_validation():
                    .format(email))
 
     account = cursor.fetchone()
-    user_hashed_password = account[4]
+    if account:
+        user_hashed_password = account[4]
 
-    if sha256_crypt.verify(password, user_hashed_password):
-        session['logged'] = True
-        session['id'] = account[0]
-        session['email'] = account[3]
-        response = {'success': True, 'message': 'Logged in successfully.'}
-        return jsonify(response),200
+        if sha256_crypt.verify(password, user_hashed_password):
+            session['logged'] = True
+            session['id'] = account[0]
+            session['email'] = account[3]
+            response = {'success': True, 'message': 'Logged in successfully.'}
+            return jsonify(response),200
+        else:
+            # Account doesnt exist or username/password incorrect
+            msg = 'Incorrect username/password!'
+            return jsonify({'success': False,'message':msg}),406
     else:
-        # Account doesnt exist or username/password incorrect
-        msg = 'Incorrect username/password!'
-        #print(msg)
-        return jsonify({'success': False,'message':msg}),406
+            msg = 'This User doesnt have any accounts'
+            return jsonify({'success': False,'message':msg}),406
 
 
 @app.route('/doctor_validation', methods=['POST', 'GET'])
@@ -166,7 +170,6 @@ def doctor_login_validation():
     else:
         # Account doesnt exist or username/password incorrect
         msg = 'Incorrect username/password!'
-        #print(msg)
         return jsonify({'success': False,'message':msg}),406
 
 @app.route('/generate_code', methods=['POST'])
@@ -196,7 +199,6 @@ def generate_code():
 @app.route('/updateDonorInfo',methods =['POST'])
 def updateDonor():
     if request.method =="POST"and 'id' in session:
-        global oldPhones
         _id = session['id']
         address=request.json.get('address')
         city=request.json.get('city')
@@ -204,15 +206,15 @@ def updateDonor():
         password=request.json.get('password')
         code = request.json.get('code')
         full_address = address +' ' +city
-        print(oldPhones)
+        encrypted_password = sha256_crypt.encrypt(password)
         # Check if the phone number is in the dictionary
-        if oldPhones in sms_codes:
+        if phone in sms_codes:
             # Check if the code matches the one in the dictionary
-            if sms_codes[oldPhones] == code:
+            if sms_codes[phone] == code:
                 # Remove the code from the dictionary
-                del sms_codes[oldPhones]
+                del sms_codes[phone]
                 
-                cursor.execute("""UPDATE `Donors` SET `address` = '{}',  `PhoneNumber`  ={}, `Dpassword`  = '{}' WHERE `DonorID` ={} """.format(full_address,phone,password,_id))
+                cursor.execute("""UPDATE `Donors` SET `address` = '{}',  `PhoneNumber`  ={}, `Dpassword`  = '{}' WHERE `DonorID` ={} """.format(full_address,phone,encrypted_password,_id))
                 conn.commit()
                 # Return a success message to the client
                 response = {'success': True, 'message': 'SMS code verification successful.'}
@@ -231,7 +233,6 @@ def updateDonor():
 @app.route('/updateDoctorInfo',methods =['POST'])
 def updateDoctor():
     if request.method =="POST" and 'id' in session:
-        global oldPhones
         Doctor_Code = session('code')
         address=request.json.get('address')
         city=request.json.get('city')
@@ -239,13 +240,12 @@ def updateDoctor():
         password=request.json.get('password')
         code = request.json.get('code')
         full_address = address +' ' + city
-
          # Check if the phone number is in the dictionary
         if phone in sms_codes:
             # Check if the code matches the one in the dictionary
-            if sms_codes[oldPhones] == code:
+            if sms_codes[phone] == code:
                 # Remove the code from the dictionary
-                del sms_codes[oldPhones]
+                del sms_codes[phone]
 
 
                 cursor.execute("""UPDATE `doctors` SET `doctor_address` = '{}', `Doctor_PhoneNumber`  ={} , `doctor_password`  ='{}' WHERE `DoctorsCode` ={} """.format(full_address,phone,password,Doctor_Code))
@@ -264,7 +264,6 @@ def updateDoctor():
 @app.route("/create_report", methods=['Post'])
 def report():
     try:
-        #doctor_code = request.form.get('doctor_code')
         #donor_email = request.form.get('donor_email')
         donor_id = session["id"]
         doctor_code = session['code']
@@ -288,16 +287,6 @@ def report():
         HBs_Antigen = request.json.get('HBs_Antigen')
         HCV_Ab_lgG = request.json.get('HCV_Ab_lgG')
         vdrl = request.json.get('VDRL')
-
-        #cursor.execute("""INSERT INTO `reports` (`status`,`reason`,`Report_Date_Time`,
-        # `Hemoglobin_Concentration_Mean_Corpuscular_MCHC`, `Glycated_Hemoglobin_HBA1C`, 
-        # `Serum_Aspartate_Transfrerase_SGOT_AST`, `Serum_Alanine_Transfrerase_SGPT_ALT`, 
-        # `Blood_Urea_Niterogen_BUN`, `Serum_creatinine`, `Serum_uric_Acid`,
-        # `Hemoglobin`, `Red_Blood_Cell_Count`, `MCH`, `MCV`, `Platelet_Count`,`HIV_Antibody`,`HBs_Antigen`,`HCV_Ab_lgG`,`VDRL`, `Donor_ID`, 
-        # `Doctor_Code`) VALUES 
-        # ({} ,{} ,{} ,{} ,{} ,{} ,{} ,{} ,{} ,{} ,{} ,{} ,{} ,{} )"""
-        #             .format(status,reason,current_time,mchc, hba1c, sgot_ast, sgot_alt, blood_urea, serum_creatine, serum_uric_acid, hemoglobine,
-        #                     red_cells_count, mch, mcv, platelet_count,HIV_Antibody,HBs_Antigen,HCV_Ab_lgG,vdrl, donor_id, doctor_code))
 
         cursor.execute("""
             INSERT INTO `reports` (
@@ -348,8 +337,6 @@ def report():
             donor_id,
             doctor_code
         ))
-
-        #cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` LIKE '{}'""".format(donor_id))
         cursor.execute("""
             SELECT `num_of_times_donated`
             FROM `donors`
@@ -360,8 +347,6 @@ def report():
             numberOfTimesDonated =1
         else:
             numberOfTimesDonated = numberOfTimesDonated[0] +1
-        
-        #cursor.execute("""UPDATE `Donors` SET `num_of_times_donated` = '{}' WHERE `DonorID` LIKE '{}'""".format(numberOfTimesDonated,donor_id))
         cursor.execute("""
             UPDATE `Donors`
             SET `num_of_times_donated` = %s
@@ -421,8 +406,6 @@ def getReport(ReportID):
                 array1['HBs_Antigen']=report[12]
                 array1['HCV_Ab_lgG']=report[13]
                 array1['VDRL']=report[14]
-
-                #print("GetReportInfo")
                 return jsonify(array1),200
             else:
                 return jsonify({'error': 'Report not found'}), 404
@@ -481,44 +464,6 @@ def getDoctorInfo():
     else:
         return jsonify({'error': 'Not logged in:Unauthoriezed'}),401    
 
-imageData =None
-@app.route('/CreateDiscount', methods = ['POST'])
-def createDiscount():
-    if request.method=='POST':
-        if 'id' in session:
-            with open(r'D:\fcis\GP\New folder\Task1\static\alpha.jpg','rb') as file:
-                blob_data = file.read()
-            global imageData    
-            imageData=blob_data
-            DataDic={}
-            id = session['id']
-            try:
-
-                cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` = {}""".format(id))
-                numberOfTimesDonated= cursor.fetchone()
-                if numberOfTimesDonated:
-                    if(numberOfTimesDonated[0]>5):
-                        NewnumberOfTimesDonated = numberOfTimesDonated[0]
-                        #cursor.execute("""INSERT INTO `discounts` (`percentage`, `LabName`,`DiscountNumber`,`discountImage`) VALUES ({}, '{}', {},'{}')""".format(40,'alpha',5,blob_data))
-                        cursor.execute("""INSERT INTO `discounts` (`percentage`, `LabName`, `DiscountNumber`, `discount_image`) VALUES (%s, %s, %s, %s)""", (40, 'alpha', 5, blob_data))
-                        conn.commit()  # Commit the insert into discounts
-                        discount_id = cursor.lastrowid  # Get the auto-incremented DiscountID
-                        cursor.execute("""INSERT INTO `getting_offer` ( `Discount_ID`,`Donor_IDDD`, `NumOfTimesDonated`) VALUES ({},{}, {})""".format(discount_id,id,NewnumberOfTimesDonated))
-                        conn.commit()  # Commit the insert into discounts-
-                        DataDic= {'success':True, 'message':'A new Discount has been created !'}
-                        return jsonify(DataDic), 200
-                    else:
-                        response = {'success': False, 'error': 'This donor does not have any discounts'}
-                        return jsonify(response),404
-                else:
-                    return jsonify({'error': 'This donor does not have any discounts'}), 404
-            except Exception as e:
-                return jsonify({'error': str(e)}),500
-
-        else:
-            return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
-    else:
-        return jsonify({'error': 'This method is not allowed'}),405
 
 @app.route('/getDiscountImage', methods = ['GET'])
 def image():
@@ -526,19 +471,21 @@ def image():
         if 'id' in session:
             id = session['id']
             DataDic={}
-            global imageData
             try:
                 cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` = {}""".format(id))
                 numberOfTimesDonated= cursor.fetchone()
                 if numberOfTimesDonated:
-                    if(numberOfTimesDonated[0]>5):
-                        # cursor.execute("""SELECT `Discount_ID` FROM `getting_offer` WHERE `Donor_IDDD` = {} """.format(id))                
-                        # DiscountID = cursor.fetchone()
-                        # #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = {}""".format(DiscountID))
-                        # cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = %s""", (DiscountID[0],))
-                        # DiscountData=cursor.fetchone()
-                        print(imageData)
-                        DataDic['DiscountImage']=base64.b64encode(imageData).decode('utf-8')  # Convert to Base64 string
+                    if(numberOfTimesDonated[0]>=5):
+                        cursor.execute("""SELECT `Discount_ID` FROM `getting_offer` WHERE `Donor_IDDD` = {} """.format(id))
+                        DiscountID = cursor.fetchone()
+                        cursor.execute("""SELECT `discount_image` FROM `discounts` WHERE `DiscountID` = %s""", (DiscountID[0],))
+                        DiscountData=cursor.fetchone()
+                        DataDic['DiscountImage']=base64.b64encode(DiscountData[0]).decode('utf-8')  # Convert to Base64 string
+                        imageList()
+                        for k,v in images_dataDict.items():
+                            if v == DataDic['DiscountImage']:
+                                value = k
+                        DataDic['key'] = value
                         return jsonify(DataDic), 200
                     else:
                         response = {'success': False, 'error': 'This donor does not have any discounts'}
@@ -553,7 +500,7 @@ def image():
         return jsonify({'error': 'This method is not allowed'}),405        
 
 @app.route('/getDiscountData/<int:DiscountID>', methods = ['GET'])
-def GetDiscount(DiscountID):
+def GetDiscountDataFromID(DiscountID):
     if request.method=='GET':
         if 'id' in session:
             id = session['id']
@@ -562,12 +509,10 @@ def GetDiscount(DiscountID):
                 cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` = {}""".format(id))
                 numberOfTimesDonated= cursor.fetchone()
                 if numberOfTimesDonated:
-                    if(numberOfTimesDonated[0]>5):
-                        # cursor.execute("""SELECT `Discount_ID` FROM `getting_offer` WHERE `Donor_IDDD` = {} """.format(id))                
-                        # DiscountID = cursor.fetchone()
-                        #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = {}""".format(DiscountID))
+                    if(numberOfTimesDonated[0]>=5):
                         cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = %s""", (DiscountID,))
                         DiscountData=cursor.fetchone()
+                        print(DiscountData)
                         DataDic['DiscountID']=DiscountData[0]
                         DataDic['percentage']=DiscountData[1]
                         DataDic['LabName']=DiscountData[2]
@@ -594,16 +539,9 @@ def GetDiscountNotification():
                 cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` = {}""".format(id))
                 numberOfTimesDonated= cursor.fetchone()
                 if numberOfTimesDonated:
-                    if(numberOfTimesDonated[0]>5):
+                    if(numberOfTimesDonated[0]>=5):
                         cursor.execute("""SELECT `Discount_ID` FROM `getting_offer` WHERE `Donor_IDDD` = {} ORDER BY `Discount_ID` DESC """.format(id))                
                         DiscountsID = cursor.fetchall()
-                        #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = {}""".format(DiscountID))
-                        #cursor.execute("""SELECT * FROM `discounts` WHERE `DiscountID` = %s""", (DiscountID[0],))
-                        #DiscountData=cursor.fetchone()
-                        # DataDic['DiscountID']=DiscountData[0]
-                        # DataDic['percentage']=DiscountData[1]
-                        # DataDic['LabName']=DiscountData[2]
-                        # DataDic['DiscountNumber']=DiscountData[3]
                         if DiscountsID:
                             DiscountsIDList= [item for t in DiscountsID for item in t]
                             return jsonify(DiscountsIDList), 200
@@ -623,7 +561,93 @@ def GetDiscountNotification():
         return jsonify({'error': 'This method is not allowed'}),405        
 
 
+images_dataDict={}
+def imageList():
+            read_images()
+            images_list=[]
+            i =0
+            for image in image_files:
+                imageDatachanged = base64.b64encode(image).decode('utf-8')  # Convert to Base64 string
+                images_list.append(imageDatachanged)
+                images_dataDict[i]=imageDatachanged
+                i =i +1
+    
 
+image_files = []  # List to store image file paths
+def read_images():
+    folder_path = r'D:\fcis\GP\New folder\Task1\static'  # Specify the folder path
+
+    # Iterate over each file in the folder
+    for filename in os.listdir(folder_path):
+        # Check if the file is an image
+        if filename.endswith('.jpg') or filename.endswith('.png') or filename.endswith('.jpeg'):
+            # Construct the full file path
+            file_path = os.path.join(folder_path, filename)
+            
+            # Open the image file in binary mode and read its content
+            with open(file_path, 'rb') as file:
+                blob_data = file.read()
+            
+            # Process the image data or perform desired operations
+            # For example, you can append the file path and blob data to a list
+            image_files.append(blob_data)
+
+@app.route('/getDiscountDataFromImage/<int:DiscountImagenumber>', methods= ['GET'])
+def getDiscountImageFromData(DiscountImagenumber):
+    if request.method=='GET':
+        if 'id' in session:
+            id = session['id']
+            try:
+                cursor.execute("""SELECT `num_of_times_donated` FROM `donors` WHERE `DonorID` = {}""".format(id))
+                numberOfTimesDonated= cursor.fetchone()
+                if numberOfTimesDonated:
+                    if(numberOfTimesDonated[0]>=5):
+                        encoded_image =images_dataDict[DiscountImagenumber]
+
+                        # Revert the Base64 string to bytes
+                        Decoded_image = base64.b64decode(encoded_image)
+                        cursor.execute("""SELECT `DiscountID` FROM `discounts` WHERE `discount_image` = %s""", (Decoded_image,))
+                        DiscountData=cursor.fetchone()   
+                        cursor.nextset()
+                        DiscountDataID =DiscountData[0]
+                        return GetDiscountDataFromID(DiscountDataID)
+                    else:
+                        response = {'success': False, 'error': 'This donor does not have any discounts'}
+                        return jsonify(response),404
+                else:
+                    return jsonify({'error': 'This donor does not have any discounts'}), 404
+            except Exception as e:
+                return jsonify({'error': str(e)}),500
+        else:
+            return jsonify({'error': 'Not logged in:Unauthoriezed'}),401
+    else:
+        return jsonify({'error': 'This method is not allowed'}),405   
+    
+
+@app.route('/DeleteDoonrAccount', methods=['POST'])
+def delete():
+    try:
+        _id = session['id']
+        if _id and request.method == 'POST':
+            sql = "SELECT Email FROM Donors WHERE DonorID=%s"
+            data = (_id,)
+            cursor.execute(sql, data)
+            DonorEmail=cursor.fetchone()
+            DonorEmail =DonorEmail[0]
+            prefix = DonorEmail.split("@")[0]
+            new_Donor_email = prefix + "xxx@" + DonorEmail.split("@")[1]
+            sql = "UPDATE Donors SET Email=%s WHERE DonorID=%s"
+            cursor.execute(sql,(new_Donor_email, _id))
+            conn.commit()
+        return jsonify({'success': True,'message':'Account deleted Successfully!'}),200
+    except Exception as e:
+        return jsonify({'error': str(e)}),404
+
+
+@app.route('/logout', methods =['GET'])
+def logout():
+    session.pop('DonorID', None)
+    return jsonify({'success': True,'message':' User has been logged out successfully'}),200
 
 if __name__ == "__main__":
 
